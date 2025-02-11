@@ -1,0 +1,26 @@
+###
+POST http://localhost:3000/tasks
+Content-Type: application/json
+
+{
+  "title": "Express",
+  "description": "express 열심히 공부하기"
+}
+
+###
+GET http://localhost:3000/tasks?count=2
+
+###
+Get http://localhost:3000/tasks/67aace67ffbccc74135b7ea4
+
+###
+PATCH http://localhost:3000/tasks/67aace67ffbccc74135b7ea4
+Content-Type: application/json
+
+{
+  "title": "Express update",
+  "description": "update test"
+}
+
+###
+DELETE http://localhost:3000/tasks/67
