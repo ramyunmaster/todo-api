@@ -3,3 +3,15 @@ GET http://localhost:3000/users
 
 ###
 GET http://localhost:3000/users/:41f1421a-57d5-44db-b610-040cb373557b
+
+###
+POST http://localhost:3000/users
+Content-Type: application/json
+
+{
+  "name": "이클립스",
+  "description": "비파향",
+  "price": 3000,
+  "stock": 30,
+  "category": "BEAUTY"
+}
