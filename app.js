@@ -1,4 +1,5 @@
 import express from "express";
+import cors from "cors";
 import { Prisma, PrismaClient } from "@prisma/client";
 import { assert } from "superstruct";
 import * as dotenv from "dotenv";
@@ -16,6 +17,7 @@ dotenv.config();
 const prisma = new PrismaClient();
 
 const app = express();
+app.user(cors());
 app.use(express.json());
 
 function asyncHandler(handler) {
