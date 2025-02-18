@@ -17,7 +17,7 @@ dotenv.config();
 const prisma = new PrismaClient();
 
 const app = express();
-app.user(cors());
+app.use(cors());
 app.use(express.json());
 
 function asyncHandler(handler) {
