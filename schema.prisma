@@ -58,17 +58,18 @@ model Order {
   orderItems OrderItem[]
 }
 
-//Product가 삭제되면 해당 Product를 가리키는 OrderItem의 productId는 Null이 되도록 해주세요
+// Order가 삭제되면 Order를 구성하는 OrderItem도 모두 삭제
+// Product가 삭제되면 해당 Product를 가리키는 OrderItem의 productId는 NULL이 되도록 해 주세요
 model OrderItem {
   id        String   @id @default(uuid())
   unitPrice Float
   quantity  Int
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
   orderId   String
-  productId String?
-  order     Order    @relation(fields: [orderId], references: [id])
   product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  productId String?
 }
 
 enum OrderStatus {

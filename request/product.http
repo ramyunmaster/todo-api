@@ -1,0 +1,28 @@
+###
+GET http://localhost:3000/products
+
+###
+GET http://localhost:3000/products/1e112c02-7c92-4d52-b76e-485e41e3f64d
+
+###
+POST http://localhost:3000/products
+Content-Type: application/json
+
+{
+  "name": "코드잇 후디",
+  "price": 9000,
+  "stock": 30,
+  "category": "FASHION"
+}
+
+###
+PATCH http://localhost:3000/products/05a2dc90-584e-49e4-b199-c78f5581ec37
+Content-Type: application/json
+
+{
+  "name": "코드잇 후드티",
+  "price": 29000
+}
+
+###
+DELETE http://localhost:3000/products/05a2dc90-584e-49e4-b199-c78f5581ec37

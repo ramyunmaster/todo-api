@@ -2,6 +2,14 @@ import express from "express";
 import { Prisma, PrismaClient } from "@prisma/client";
 import { assert } from "superstruct";
 import * as dotenv from "dotenv";
+import {
+  CreateUser,
+  PatchUser,
+  CreateProduct,
+  PatchProduct,
+  CreateOrder,
+  CreateSavedProduct,
+} from "./structs.js";
 
 dotenv.config();
 
@@ -15,10 +23,20 @@ function asyncHandler(handler) {
     try {
       await handler(req, res);
     } catch (e) {
-      console.log("Error Occured");
-      console.log(e.name);
-      if (e.name === "StructError") {
+      console.log("Error occured");
+      console.log(e);
+      if (
+        e.name === "StructError" || // 1.
+        (e instanceof Prisma.PrismaClientKnownRequestError &&
+          e.code === "P2002") || // 2.
+        e instanceof Prisma.PrismaClientValidationError // 3.
+      ) {
         res.status(400).send({ message: e.message });
+      } else if (
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === "P2025"
+      ) {
+        res.status(404).send({ message: e.message });
       } else {
         res.status(500).send({ message: e.message });
       }
@@ -26,10 +44,11 @@ function asyncHandler(handler) {
   };
 }
 
+// users
 app.get(
   "/users",
   asyncHandler(async (req, res) => {
-    const { offset = 0, limit = 10, order = "newtest" } = req.query;
+    const { offset = 0, limit = 10, order = "newest" } = req.query;
     let orderBy;
     switch (order) {
       case "oldest":
@@ -40,11 +59,17 @@ app.get(
       default:
         orderBy = { createdAt: "desc" };
     }
-
     const users = await prisma.user.findMany({
-      orderBy: orderBy,
+      orderBy,
       skip: parseInt(offset),
       take: parseInt(limit),
+      include: {
+        userPreference: {
+          select: {
+            receiveEmail: true,
+          },
+        },
+      },
     });
     res.send(users);
   })
@@ -54,30 +79,62 @@ app.get(
   "/users/:id",
   asyncHandler(async (req, res) => {
     const { id } = req.params;
-    const user = await prisma.user.findUnique({
+    // Destructuring assignment
+    const user = await prisma.user.findUniqueOrThrow({
       where: { id },
+      include: {
+        userPreference: {
+          select: {
+            receiveEmail: true,
+          },
+        },
+      },
     });
+    console.log(user);
     res.send(user);
   })
 );
 
 app.post(
   "/users",
-  asyncHandler(async (req, res) => {
-    assert(req.body, CreateUser);
-    const user = await prisma.user.create({ data: req.body });
-    res.status(201).send(user);
-  })
+  asyncHandler(
+    asyncHandler(async (req, res) => {
+      assert(req.body, CreateUser);
+      const { userPreference, ...userFields } = req.body;
+      const user = await prisma.user.create({
+        data: {
+          ...userFields,
+          userPreference: {
+            create: userPreference,
+          },
+        },
+        include: {
+          userPreference: true,
+        },
+      });
+      res.status(201).send(user);
+    })
+  )
 );
 
 app.patch(
   "/users/:id",
   asyncHandler(async (req, res) => {
     const { id } = req.params;
-    assert(req.body.patchUser);
+    assert(req.body, PatchUser);
+
+    const { userPreference, ...userFields } = req.body;
     const user = await prisma.user.update({
       where: { id },
-      data: req.body,
+      data: {
+        ...userFields,
+        userPreference: {
+          update: userPreference,
+        },
+      },
+      include: {
+        userPreference: true,
+      },
     });
     res.send(user);
   })
@@ -94,20 +151,85 @@ app.delete(
   })
 );
 
+app.get(
+  "/users/:id/saved-products",
+  asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const { savedProducts } = await prisma.user.findUniqueOrThrow({
+      where: { id },
+      include: {
+        savedProducts: true,
+      },
+    });
+    res.send(savedProducts);
+  })
+);
+
+app.post(
+  "/users/:id/saved-products",
+  asyncHandler(async (req, res) => {
+    assert(req.body, CreateSavedProduct);
+    const { id: userId } = req.params;
+    const { productId } = req.body;
+
+    const savedCount = await prisma.user.count({
+      where: {
+        id: userId,
+        savedProducts: {
+          some: { id: productId },
+        },
+      },
+    });
+    console.log("savedCount: ", typeof savedCount);
+
+    const condition =
+      savedCount > 0
+        ? { disconnect: { id: productId } }
+        : { connect: { id: productId } };
+
+    const savedProducts = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        savedProducts: condition,
+      },
+      include: {
+        savedProducts: true,
+      },
+    });
+
+    res.send(savedProducts);
+  })
+);
+
+app.get(
+  "/users/:id/orders",
+  asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const { orders } = await prisma.user.findUniqueOrThrow({
+      where: { id },
+      include: {
+        orders: true,
+      },
+    });
+    res.send(orders);
+  })
+);
+
 // products
 app.get(
   "/products",
   asyncHandler(async (req, res) => {
-    const { offset = 0, limit = 10, order = newest, category } = req.query;
+    const { offset = 0, limit = 10, order, category } = req.query;
     let orderBy;
     switch (order) {
-      case "PriceLowest":
+      case "priceLowest":
         orderBy = { price: "asc" };
         break;
-      case "PriceHighest":
+      case "priceHighest":
         orderBy = { price: "desc" };
         break;
       case "oldest":
+        orderBy = { createdAt: "asc" };
         break;
       case "newest":
         orderBy = { createdAt: "desc" };
@@ -118,12 +240,14 @@ app.get(
     const products = await prisma.product.findMany({
       where,
       orderBy,
-      skip: pareseInt(offset),
+      skip: parseInt(offset),
       take: parseInt(limit),
     });
+    console.log(products);
     res.send(products);
   })
 );
+
 app.get(
   "/products/:id",
   asyncHandler(async (req, res) => {
@@ -131,13 +255,15 @@ app.get(
     const product = await prisma.product.findUnique({
       where: { id },
     });
+    console.log(product);
+    res.send(product);
   })
 );
 
 app.post(
   "/products",
   asyncHandler(async (req, res) => {
-    assert(req.body);
+    assert(req.body, CreateProduct);
     const product = await prisma.product.create({
       data: req.body,
     });
@@ -149,11 +275,12 @@ app.patch(
   "/products/:id",
   asyncHandler(async (req, res) => {
     const { id } = req.params;
-    const user = await prisma.product.update({
+    assert(req.body, PatchProduct);
+    const product = await prisma.product.update({
       where: { id },
       data: req.body,
     });
-    res.send(products);
+    res.send(product);
   })
 );
 
@@ -161,13 +288,112 @@ app.delete(
   "/products/:id",
   asyncHandler(async (req, res) => {
     const { id } = req.params;
-    await prisma.products.delete({
+    await prisma.product.delete({
       where: { id },
     });
     res.sendStatus(204);
   })
 );
 
+app.post(
+  "/orders",
+  asyncHandler(async (req, res) => {
+    assert(req.body, CreateOrder);
+    const { userId, orderItems } = req.body;
+
+    // 1. get products
+    const productIds = orderItems.map((orderItem) => orderItem.productId);
+    const products = await prisma.product.findMany({
+      where: { id: { in: productIds } },
+    });
+
+    function getQuantity(productId) {
+      const orderItem = orderItems.find(
+        (orderItem) => orderItem.productId === productId
+      );
+      return orderItem ? orderItem.quantity : 0;
+    }
+
+    // 2. 재고와 주문량 비교
+    const isSufficientStock = products.every((product) => {
+      const { id, stock } = product;
+      return stock >= getQuantity(id);
+    });
+
+    // 3. error or create order
+    if (!isSufficientStock) {
+      throw new Error("Insufficient stock");
+    }
+
+    //Quiz: 실제 상품의 재고량을 감소시키는 로직 추가
+    // for (const productId of productIds) {
+    //   await prisma.product.update({
+    //     where: { id: productId },
+    //     data: {
+    //       stock: {
+    //         decrement: getQuantity(productId),
+    //       },
+    //     },
+    //   });
+    // }
+
+    const queries = productIds.map((productId) =>
+      prisma.product.update({
+        where: { id: productId },
+        data: {
+          stock: {
+            decrement: getQuantity(productId),
+          },
+        },
+      })
+    );
+    await Promise.all(queries);
+
+    const order = await prisma.order.create({
+      data: {
+        user: {
+          connect: { id: userId },
+        },
+        // userId,
+        orderItems: {
+          create: orderItems,
+        },
+      },
+      include: {
+        orderItems: true,
+      },
+    });
+    res.status(201).send(order);
+  })
+);
+
+app.get(
+  "/orders/:id",
+  asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const order = await prisma.order.findUniqueOrThrow({
+      where: { id },
+      include: {
+        orderItems: true,
+      },
+    });
+    // 1번 방식
+    let total = 0;
+    order.orderItems.forEach(({ unitPrice, quantity }) => {
+      total += unitPrice * quantity;
+    });
+
+    // 2번 방식
+    // const total = order.orderItems.reduce((acc, { unitPrice, quantity }) => {
+    //   return acc + unitPrice * quantity;
+    // }, 0);
+
+    order.total = total;
+    res.send(order);
+  })
+);
+
+// app.listen
 app.listen(process.env.PORT || 3000, () =>
-  console.log(`Server Started on ${process.env.PORT}`)
+  console.log(`Server started on ${process.env.PORT}`)
 );
