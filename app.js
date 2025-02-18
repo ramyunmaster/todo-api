@@ -19,6 +19,9 @@ const prisma = new PrismaClient();
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.get("/", (req, res) => {
+  res.send("Welcome to Comazon API!");
+});
 
 function asyncHandler(handler) {
   return async function (req, res) {
