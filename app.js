@@ -347,22 +347,23 @@ app.post(
         },
       })
     );
-    await Promise.all(queries);
 
-    const order = await prisma.order.create({
-      data: {
-        user: {
-          connect: { id: userId },
+    const [order] = await prisma.$transaction([
+      prisma.order.create({
+        data: {
+          user: {
+            connect: { id: userId },
+          },
+          orderItems: {
+            create: orderItems,
+          },
         },
-        // userId,
-        orderItems: {
-          create: orderItems,
+        include: {
+          orderItems: true,
         },
-      },
-      include: {
-        orderItems: true,
-      },
-    });
+      }),
+      ...queries,
+    ]);
     res.status(201).send(order);
   })
 );
